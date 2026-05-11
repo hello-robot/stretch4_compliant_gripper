@@ -1,0 +1,428 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+     Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot
+  name="URDF_DALI_ASSEM_Stretch_Gripper_40deg">
+  <link
+    name="link_quick_connect_interface">
+    <inertial>
+      <origin
+        xyz="-1.05071694326411E-05 -0.0452064085386374 -0.00459461221199426"
+        rpy="0 0 0" />
+      <mass
+        value="0.0917733055255674" />
+      <inertia
+        ixx="9.02973237248856E-05"
+        ixy="4.55365503200894E-08"
+        ixz="-2.04823535398E-08"
+        iyy="3.46670209199285E-05"
+        iyz="2.9879199610378E-06"
+        izz="0.000104269816787914" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_DALI_ASSEM_Stretch_Gripper_40deg/meshes/link_quick_connect_interface.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_DALI_ASSEM_Stretch_Gripper_40deg/meshes/link_quick_connect_interface.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="link_gripper_finger_right">
+    <inertial>
+      <origin
+        xyz="-0.0197363517714474 -3.1720863942911E-06 -0.102874799750029"
+        rpy="0 0 0" />
+      <mass
+        value="0.0196451967584484" />
+      <inertia
+        ixx="5.78135538944561E-05"
+        ixy="-4.00009790917171E-09"
+        ixz="-6.95117285144869E-06"
+        iyy="6.49200844454336E-05"
+        iyz="-7.1110705641439E-10"
+        izz="7.66306923997871E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_DALI_ASSEM_Stretch_Gripper_40deg/meshes/link_gripper_finger_right.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_DALI_ASSEM_Stretch_Gripper_40deg/meshes/link_gripper_finger_right.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_gripper_finger_right"
+    type="revolute">
+    <origin
+      xyz="-0.0222607496293707 -0.0373909332661382 0"
+      rpy="1.5707963267949 0 3.14159265358979" />
+    <parent
+      link="link_quick_connect_interface" />
+    <child
+      link="link_gripper_finger_right" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="0"
+      upper="0.5"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link_gripper_fingertip_right">
+    <inertial>
+      <origin
+        xyz="0.00831418172506701 -0.000282885336590441 0.00109919351848498"
+        rpy="0 0 0" />
+      <mass
+        value="0.0155426874942021" />
+      <inertia
+        ixx="1.01021379613109E-06"
+        ixy="7.23121948423494E-08"
+        ixz="5.85469641129296E-08"
+        iyy="2.15877889061095E-06"
+        iyz="6.10187684365019E-09"
+        izz="2.74822439913869E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_DALI_ASSEM_Stretch_Gripper_40deg/meshes/link_gripper_fingertip_right.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.752941176470588 0.752941176470588 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_DALI_ASSEM_Stretch_Gripper_40deg/meshes/link_gripper_fingertip_right.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_gripper_fingertip_right"
+    type="fixed">
+    <origin
+      xyz="-0.0221679999883886 0 -0.191008332164326"
+      rpy="-3.14159265358979 -1.29154364647579 3.14159265358979" />
+    <parent
+      link="link_gripper_finger_right" />
+    <child
+      link="link_gripper_fingertip_right" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="link_aruco_fingertip_right">
+    <inertial>
+      <origin
+        xyz="-3.30439794460347E-06 -9.90743941896299E-06 -0.000211787813162001"
+        rpy="0 0 0" />
+      <mass
+        value="0.000123521493853864" />
+      <inertia
+        ixx="3.33209068564967E-09"
+        ixy="3.38901369902686E-15"
+        ixz="7.62400928011495E-14"
+        iyy="3.32883778612984E-09"
+        iyz="2.28587510762432E-13"
+        izz="6.65796010218536E-09" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_DALI_ASSEM_Stretch_Gripper_40deg/meshes/link_aruco_fingertip_right.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_DALI_ASSEM_Stretch_Gripper_40deg/meshes/link_aruco_fingertip_right.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_aruco_fingertip_right"
+    type="fixed">
+    <origin
+      xyz="0.0320457043432332 0 -0.00331710992520841"
+      rpy="-0.191986217719377 0.872664625997161 0" />
+    <parent
+      link="link_gripper_fingertip_right" />
+    <child
+      link="link_aruco_fingertip_right" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="link_gripper_finger_left">
+    <inertial>
+      <origin
+        xyz="0.0197238425895227 3.17145204552967E-06 -0.102896385741803"
+        rpy="0 0 0" />
+      <mass
+        value="0.0196491261592472" />
+      <inertia
+        ixx="5.78135538944637E-05"
+        ixy="-4.00009790983066E-09"
+        ixz="6.95117285142702E-06"
+        iyy="6.49200844454593E-05"
+        iyz="7.11107056532048E-10"
+        izz="7.66306923999674E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_DALI_ASSEM_Stretch_Gripper_40deg/meshes/link_gripper_finger_left.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_DALI_ASSEM_Stretch_Gripper_40deg/meshes/link_gripper_finger_left.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_gripper_finger_left"
+    type="revolute">
+    <origin
+      xyz="0.0222607496293707 -0.0373909332661382 0"
+      rpy="1.5707963267949 0 3.14159265358979" />
+    <parent
+      link="link_quick_connect_interface" />
+    <child
+      link="link_gripper_finger_left" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="-0.5"
+      upper="0"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link_gripper_fingertip_left">
+    <inertial>
+      <origin
+        xyz="-0.00831382094715341 -0.000283016160756902 0.0004773750495808"
+        rpy="0 0 0" />
+      <mass
+        value="0.015542645515565" />
+      <inertia
+        ixx="1.01019269975633E-06"
+        ixy="-7.23729032825047E-08"
+        ixz="-5.85737834866789E-08"
+        iyy="2.15872472175607E-06"
+        iyz="6.10814570392124E-09"
+        izz="2.74818534026927E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_DALI_ASSEM_Stretch_Gripper_40deg/meshes/link_gripper_fingertip_left.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.752941176470588 0.752941176470588 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_DALI_ASSEM_Stretch_Gripper_40deg/meshes/link_gripper_fingertip_left.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_gripper_fingertip_left"
+    type="fixed">
+    <origin
+      xyz="0.0221679999883923 0 -0.191008332164325"
+      rpy="3.14159265358979 1.29154364647581 3.14159265358979" />
+    <parent
+      link="link_gripper_finger_left" />
+    <child
+      link="link_gripper_fingertip_left" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="link_aruco_fingertip_left">
+    <inertial>
+      <origin
+        xyz="-3.30439794460347E-06 -9.90743941899422E-06 -0.000211787813162001"
+        rpy="0 0 0" />
+      <mass
+        value="0.000123521493853864" />
+      <inertia
+        ixx="3.33209068564967E-09"
+        ixy="3.38901369189242E-15"
+        ixz="7.62400928013563E-14"
+        iyy="3.32883778612982E-09"
+        iyz="2.28587510761992E-13"
+        izz="6.65796010218535E-09" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_DALI_ASSEM_Stretch_Gripper_40deg/meshes/link_aruco_fingertip_left.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_DALI_ASSEM_Stretch_Gripper_40deg/meshes/link_aruco_fingertip_left.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_aruco_fingertip_left"
+    type="fixed">
+    <origin
+      xyz="-0.0320457043432328 0 -0.00441710992520918"
+      rpy="-0.191986217719377 -0.872664625997161 0" />
+    <parent
+      link="link_gripper_fingertip_left" />
+    <child
+      link="link_aruco_fingertip_left" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="link_grasp_center">
+    <inertial>
+      <origin
+        xyz="0 0 5.74053187100322E-20"
+        rpy="0 0 0" />
+      <mass
+        value="6.54498469497874E-05" />
+      <inertia
+        ixx="1.63624617374468E-10"
+        ixy="0"
+        ixz="0"
+        iyy="1.63624617374468E-10"
+        iyz="0"
+        izz="1.63624617374468E-10" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_DALI_ASSEM_Stretch_Gripper_40deg/meshes/link_grasp_center.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_DALI_ASSEM_Stretch_Gripper_40deg/meshes/link_grasp_center.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_grasp_center"
+    type="fixed">
+    <origin
+      xyz="0 -0.234538088082326 0"
+      rpy="0 0 -1.5707963267949" />
+    <parent
+      link="link_quick_connect_interface" />
+    <child
+      link="link_grasp_center" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+</robot>
