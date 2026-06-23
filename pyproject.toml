@@ -25,6 +25,5 @@ where = ["src"]
 stretch4_gripper_modeling_and_control = ["*.urdf"]
 
 [tool.uv.sources]
-hello-robot-stretch4-urdf = { workspace = true }
 hello-robot-stretch4-body = { workspace = true }
 hello-robot-stretch4-flying-gripper = { workspace = true }
