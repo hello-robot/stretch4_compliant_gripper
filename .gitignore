@@ -1,0 +1,6 @@
+__pycache__
+*.egg-info
+
+*.yaml
+*.png
+gripper_calibration*

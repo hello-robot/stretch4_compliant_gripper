@@ -1,7 +1,7 @@
 import subprocess
 
 # Set these values for your network
-robot_ip = '100.90.83.97' #
+robot_ip = '100.71.110.52' #
 remote_computer_ip = '100.69.89.24'
 
 # Set these to your preferred port numbers

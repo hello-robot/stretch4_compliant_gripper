@@ -5,9 +5,9 @@ import sys
 import numpy as np
 import zmq
 
-import stretch_body_ii.robot.robot_client as rc
-import stretch_body_ii.robot.robot as rb
-from stretch_body_ii.core.robot_params import RobotParams
+import stretch4_body.robot.robot_client as rc
+import stretch4_body.robot.robot as rb
+from stretch4_body.core.robot_params import RobotParams
 
 from kinematic_controller import KinematicController
 from stretch4_gripper_modeling_and_control import gripper_networking as gn
