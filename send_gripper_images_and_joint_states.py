@@ -8,7 +8,7 @@ import zmq
 import numpy as np
 import copy
 
-import stretch_body_ii.robot.robot_client as rc
+import stretch4_body.robot.robot_client as rc
 from stretch4_gripper_modeling_and_control.gripper_camera import GripperCamera, add_camera_args, process_camera_args
 from stretch4_gripper_modeling_and_control import gripper_networking as gn
 

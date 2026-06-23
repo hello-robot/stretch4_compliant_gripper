@@ -7,7 +7,7 @@ import yaml
 import numpy as np
 import cv2
 import argparse
-import stretch_body_ii.robot.robot_client as rc
+import stretch4_body.robot.robot_client as rc
 from stretch4_gripper_modeling_and_control import gripper_networking as gn
 from stretch4_gripper_modeling_and_control import telemetry_utils as tu
 from recv_and_detect_fingertips import FingertipDetector, add_fingertip_detector_args, process_fingertip_detector_args

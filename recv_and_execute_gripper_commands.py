@@ -5,17 +5,18 @@ import sys
 import numpy as np
 import zmq
 
-import stretch_body_ii.robot.robot_client as rc
-import stretch_body_ii.robot.robot as rb
-from stretch_body_ii.core.robot_params import RobotParams
+import stretch4_body.robot.robot_client as rc
+import stretch4_body.robot.robot as rb
+from stretch4_body.core.robot_params import RobotParams
 
-from kinematic_controller import KinematicController
+from stretch4_flying_gripper.kinematic_controller import KinematicController
 from stretch4_gripper_modeling_and_control import gripper_networking as gn
-import teleop_config
+from stretch4_flying_gripper import teleop_config
 
 def main():
     parser = teleop_config.get_base_parser('Receive and Execute Gripper Commands for Stretch')
     parser.add_argument('-r', '--remote', action='store_true', help='Use this argument when running the code on a remote computer. Configure gripper_networking.py first.') 
+    parser.add_argument('--disable_flipped_wrist', action='store_true', help='Disable the flipped wrist configuration.')
     args = parser.parse_args()
 
     robot, ikin, accel_vel_dict = teleop_config.initialize_teleop_hardware(args)
@@ -33,7 +34,7 @@ def main():
     vel_roll = accel_vel_dict['vel_roll']
 
     vel_grip = accel_vel_dict['vel_grip']
-    acc_grip = accel_vel_dict['accel_grip']
+    acc_grip = accel_vel_dict['acc_grip']
     
     gamepad_speed_trans = accel_vel_dict['gamepad_speed_trans']
     gamepad_speed_rot = accel_vel_dict['gamepad_speed_rot']

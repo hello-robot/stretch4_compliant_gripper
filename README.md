@@ -14,10 +14,12 @@ This repository provides tools and utilities for modeling, calibrating, and cont
 
 ## Installation
 
-This repository has been structured as a pip-installable Python package. You should install this repository on **both** the Stretch 4 robot's onboard NUC computer (Ubuntu 24.04) and your offboard desktop machine (Ubuntu 24.04) running the GPU-accelerated code.
+This repository has been structured as a pip-installable Python package. Collecting gripper calibration data, fitting the calibrated gripper kinematic model, and running teleoperation scripts can be done with or without a remote desktop connection.
+
+For integration with `stretch4_grasping_demo`, you should install this repository on **both** the Stretch 4 robot's onboard NUC computer (Ubuntu 24.04) and your offboard desktop machine (Ubuntu 24.04) running the GPU-accelerated code.
 
 ### Prerequisites
-Both machines must be running Ubuntu 24.04 and have Python 3.10+ installed. Ensure you have the `stretch_body` ecosystem installed and configured, particularly `HELLO_FLEET_PATH` and `HELLO_FLEET_ID` environment variables.
+Both machines must be running Ubuntu 24.04 and have Python 3.10+ installed. Ensure you have the `stretch_body` ecosystem installed and configured, particularly `HELLO_FLEET_PATH` and `HELLO_FLEET_ID` environment variables. You will also need to have the `stretch4_flying_gripper` package installed as well. You can clone this repository [here](https://github.com/hello-robot/stretch4_flying_gripper) and install it as described in its README.
 
 ### Installation Steps
 
@@ -53,7 +55,7 @@ The two variables to change are at the top of the file, as shown in the followin
 ```bash
 # Set these values for your network
 robot_ip = '100.90.83.97'
-remote_computer_ip = '100.69.89.24'
+remote_computer_ip = '100.69.89.24'  # if using a remote desktop computer
 ```
 
 
@@ -163,6 +165,22 @@ Both of these commands visualize how the kinematically predicted fingertip poses
 ## Teleoperation
 
 You can teleoperate the robot's gripper using an Xbox-style gamepad connected to your remote desktop. This relies on the control logic provided by the `stretch4_flying_gripper_control` package.
+
+### Local Teleoperation
+
+1. In **Terminal 1** (on the robot):
+   Start the command receiver to listen for incoming UDP/ZMQ joint targets:
+   ```bash
+   python3 recv_and_execute_gripper_commands.py
+   ```
+
+2. In **Terminal 2** (on the robot):
+   Run the gamepad mapping script to broadcast your controller inputs:
+   ```bash
+   python3 send_gripper_commands.py
+   ```
+
+### Remote Teleoperation
 
 1. On the **Robot**:
    Start the command receiver to listen for incoming UDP/ZMQ joint targets:

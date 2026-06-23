@@ -7,13 +7,15 @@ name = "stretch4_gripper_modeling_and_control"
 version = "0.1.0"
 description = "Methods for visually and kinematically estimating the poses of the robot’s fingertips."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "opencv-python",
     "scipy",
     "pyyaml",
     "pyzmq",
+    "hello-robot-stretch4-body",
+    "hello-robot-stretch4-flying-gripper",
 ]
 
 [tool.setuptools.packages.find]
@@ -21,3 +23,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 stretch4_gripper_modeling_and_control = ["*.urdf"]
+
+[tool.uv.sources]
+hello-robot-stretch4-body = { workspace = true }
+hello-robot-stretch4-flying-gripper = { workspace = true }

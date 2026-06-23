@@ -5,7 +5,7 @@ import sys
 import numpy as np
 import zmq
 
-from gamepad_mapper import GamepadMapper
+from stretch4_flying_gripper.gamepad_mapper import GamepadMapper
 from stretch4_gripper_modeling_and_control import gripper_networking as gn
 
 def main():
