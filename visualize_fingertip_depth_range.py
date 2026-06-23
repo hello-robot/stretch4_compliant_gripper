@@ -30,7 +30,7 @@ def main(use_remote_computer, args, model_path=None, use_robot_state=False, bg_v
     robot = None
     if use_robot_state:
         print("Connecting to local Stretch robot hardware to pipeline actuator state...")
-        import stretch_body_ii.robot.robot_client as rc
+        import stretch4_body.robot.robot_client as rc
         robot = rc.RobotClient()
         robot.startup()
         assert robot.is_homed(), "Robot is not homed! Cannot use absolute actuator states."
