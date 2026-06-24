@@ -111,9 +111,11 @@ def main():
             if not args.direct:
                 robot.pull_status()
                 
-            # Sync IK configuration with real robot
-            pitch_sign_mult = 1.0 if args.disable_flipped_wrist else -1.0
-            roll_sign_mult = 1.0 if args.disable_flipped_wrist else -1.0
+            # # Sync IK configuration with real robot
+            # pitch_sign_mult = 1.0 if args.disable_flipped_wrist else -1.0
+            # roll_sign_mult = 1.0 if args.disable_flipped_wrist else -1.0
+            pitch_sign_mult = 1.0
+            roll_sign_mult = -1.0
             
             ikin.q[0] = robot.base.status['x']
             ikin.q[1] = robot.base.status['y']
@@ -203,33 +205,33 @@ def main():
                 print(f"--> Receiver Switched to Mode {control_mode}: {mode_names.get(control_mode, 'Unknown')}")
 
             if control_mode == 3:
-                if not args.use_system_speeds:
-                    # Direct joint space mapping ignoring kinematics solver
-                    j_cmds = cmd.get('joint_velocity_commands', {})
-                    v_vel = np.zeros(8)
-                    v_vel[0] = j_cmds.get('base_x', 0.0) * gamepad_speed_trans
-                    v_vel[1] = j_cmds.get('base_y', 0.0) * gamepad_speed_trans
-                    v_vel[2] = j_cmds.get('base_theta', 0.0) * gamepad_speed_rot
-                    v_vel[3] = j_cmds.get('lift', 0.0) * gamepad_speed_trans
-                    v_vel[4] = j_cmds.get('arm', 0.0) * gamepad_speed_trans
-                    v_vel[5] = j_cmds.get('wrist_yaw', 0.0) * gamepad_speed_rot
-                    v_vel[6] = j_cmds.get('wrist_pitch', 0.0) * gamepad_speed_rot
-                    v_vel[7] = j_cmds.get('wrist_roll', 0.0) * gamepad_speed_rot
-                    v = v_vel * dt
-                else: 
-                    j_cmds = cmd.get('joint_velocity_commands', {})
-                    v_vel = np.zeros(8)
-                    # Bound the commands to be in the range [-1, 1] and use this to scale the robot's joint speed.
-                    # For each joint, this will limit the speed to the maximum speed for that joint.
-                    v_vel[0] = np.clip(j_cmds.get('base_x', 0.0), -1.0, 1.0) * accel_vel_dict['vel_base_xy']
-                    v_vel[1] = np.clip(j_cmds.get('base_y', 0.0), -1.0, 1.0) * accel_vel_dict['vel_base_xy']
-                    v_vel[2] = np.clip(j_cmds.get('base_theta', 0.0), -1.0, 1.0) * accel_vel_dict['vel_base_w']
-                    v_vel[3] = np.clip(j_cmds.get('lift', 0.0), -1.0, 1.0) * accel_vel_dict['vel_lift']
-                    v_vel[4] = np.clip(j_cmds.get('arm', 0.0), -1.0, 1.0) * accel_vel_dict['vel_arm']
-                    v_vel[5] = np.clip(j_cmds.get('wrist_yaw', 0.0), -1.0, 1.0) * accel_vel_dict['vel_yaw']
-                    v_vel[6] = np.clip(j_cmds.get('wrist_pitch', 0.0), -1.0, 1.0) * accel_vel_dict['vel_pitch']
-                    v_vel[7] = np.clip(j_cmds.get('wrist_roll', 0.0), -1.0, 1.0) * accel_vel_dict['vel_roll']
-                    v = v_vel * dt                    
+                # if not args.use_system_speeds:
+                #     # Direct joint space mapping ignoring kinematics solver
+                #     j_cmds = cmd.get('joint_velocity_commands', {})
+                #     v_vel = np.zeros(8)
+                #     v_vel[0] = j_cmds.get('base_x', 0.0) * gamepad_speed_trans
+                #     v_vel[1] = j_cmds.get('base_y', 0.0) * gamepad_speed_trans
+                #     v_vel[2] = j_cmds.get('base_theta', 0.0) * gamepad_speed_rot
+                #     v_vel[3] = j_cmds.get('lift', 0.0) * gamepad_speed_trans
+                #     v_vel[4] = j_cmds.get('arm', 0.0) * gamepad_speed_trans
+                #     v_vel[5] = j_cmds.get('wrist_yaw', 0.0) * gamepad_speed_rot
+                #     v_vel[6] = j_cmds.get('wrist_pitch', 0.0) * gamepad_speed_rot
+                #     v_vel[7] = j_cmds.get('wrist_roll', 0.0) * gamepad_speed_rot
+                #     v = v_vel * dt
+                # else: 
+                j_cmds = cmd.get('joint_velocity_commands', {})
+                v_vel = np.zeros(8)
+                # Bound the commands to be in the range [-1, 1] and use this to scale the robot's joint speed.
+                # For each joint, this will limit the speed to the maximum speed for that joint.
+                v_vel[0] = np.clip(j_cmds.get('base_x', 0.0), -1.0, 1.0) * accel_vel_dict['vel_base_xy']
+                v_vel[1] = np.clip(j_cmds.get('base_y', 0.0), -1.0, 1.0) * accel_vel_dict['vel_base_xy']
+                v_vel[2] = np.clip(j_cmds.get('base_theta', 0.0), -1.0, 1.0) * accel_vel_dict['vel_base_w']
+                v_vel[3] = np.clip(j_cmds.get('lift', 0.0), -1.0, 1.0) * accel_vel_dict['vel_lift']
+                v_vel[4] = np.clip(j_cmds.get('arm', 0.0), -1.0, 1.0) * accel_vel_dict['vel_arm']
+                v_vel[5] = np.clip(j_cmds.get('wrist_yaw', 0.0), -1.0, 1.0) * accel_vel_dict['vel_yaw']
+                v_vel[6] = np.clip(j_cmds.get('wrist_pitch', 0.0), -1.0, 1.0) * accel_vel_dict['vel_pitch']
+                v_vel[7] = np.clip(j_cmds.get('wrist_roll', 0.0), -1.0, 1.0) * accel_vel_dict['vel_roll']
+                v = v_vel * dt
             else:
                 # v_desired and rot_change have already been scaled by the sender's left_trigger
                 v_desired = np.array(cmd.get('v_desired', [0.0, 0.0, 0.0])) * gamepad_speed_trans * dt
