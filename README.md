@@ -19,7 +19,13 @@ This repository has been structured as a pip-installable Python package. Collect
 For integration with `stretch4_grasping_demo`, you should install this repository on **both** the Stretch 4 robot's onboard NUC computer (Ubuntu 24.04) and your offboard desktop machine (Ubuntu 24.04) running the GPU-accelerated code.
 
 ### Prerequisites
-Both machines must be running Ubuntu 24.04 and have Python 3.10+ installed. Ensure you have the `stretch_body` ecosystem installed and configured, particularly `HELLO_FLEET_PATH` and `HELLO_FLEET_ID` environment variables. You will also need to have the `stretch4_flying_gripper` package installed as well. You can clone this repository [here](https://github.com/hello-robot/stretch4_flying_gripper) and install it as described in its README.
+Both machines must be running Ubuntu 24.04 and have Python 3.10+ installed. Ensure you have the `stretch_body` ecosystem installed and configured, particularly `HELLO_FLEET_PATH` and `HELLO_FLEET_ID` environment variables. 
+
+### Other Dependencies
+
+Please clone and install the following dependencies in the virtual environment associated with this package:
+
+- `stretch4_flying_gripper`: https://github.com/hello-robot/stretch4_flying_gripper
 
 ### Installation Steps
 

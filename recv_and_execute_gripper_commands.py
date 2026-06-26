@@ -111,9 +111,11 @@ def main():
             if not args.direct:
                 robot.pull_status()
                 
-            # Sync IK configuration with real robot
-            pitch_sign_mult = 1.0 if args.disable_flipped_wrist else -1.0
-            roll_sign_mult = 1.0 if args.disable_flipped_wrist else -1.0
+            # # Sync IK configuration with real robot
+            # pitch_sign_mult = 1.0 if args.disable_flipped_wrist else -1.0
+            # roll_sign_mult = 1.0 if args.disable_flipped_wrist else -1.0
+            pitch_sign_mult = 1.0
+            roll_sign_mult = -1.0
             
             ikin.q[0] = robot.base.status['x']
             ikin.q[1] = robot.base.status['y']
@@ -221,6 +223,7 @@ def main():
                     v_vel = np.zeros(8)
                     # Bound the commands to be in the range [-1, 1] and use this to scale the robot's joint speed.
                     # For each joint, this will limit the speed to the maximum speed for that joint.
+                    # NOTE: these values can be found in stretch4_body/robot/robot_params_SE4.py
                     v_vel[0] = np.clip(j_cmds.get('base_x', 0.0), -1.0, 1.0) * accel_vel_dict['vel_base_xy']
                     v_vel[1] = np.clip(j_cmds.get('base_y', 0.0), -1.0, 1.0) * accel_vel_dict['vel_base_xy']
                     v_vel[2] = np.clip(j_cmds.get('base_theta', 0.0), -1.0, 1.0) * accel_vel_dict['vel_base_w']
@@ -229,7 +232,7 @@ def main():
                     v_vel[5] = np.clip(j_cmds.get('wrist_yaw', 0.0), -1.0, 1.0) * accel_vel_dict['vel_yaw']
                     v_vel[6] = np.clip(j_cmds.get('wrist_pitch', 0.0), -1.0, 1.0) * accel_vel_dict['vel_pitch']
                     v_vel[7] = np.clip(j_cmds.get('wrist_roll', 0.0), -1.0, 1.0) * accel_vel_dict['vel_roll']
-                    v = v_vel * dt                    
+                    v = v_vel * dt
             else:
                 # v_desired and rot_change have already been scaled by the sender's left_trigger
                 v_desired = np.array(cmd.get('v_desired', [0.0, 0.0, 0.0])) * gamepad_speed_trans * dt
