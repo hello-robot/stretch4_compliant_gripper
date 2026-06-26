@@ -223,7 +223,7 @@ def main():
                     v_vel = np.zeros(8)
                     # Bound the commands to be in the range [-1, 1] and use this to scale the robot's joint speed.
                     # For each joint, this will limit the speed to the maximum speed for that joint.
-                    # NOTE: the 
+                    # NOTE: these values can be found in stretch4_body/robot/robot_params_SE4.py
                     v_vel[0] = np.clip(j_cmds.get('base_x', 0.0), -1.0, 1.0) * accel_vel_dict['vel_base_xy']
                     v_vel[1] = np.clip(j_cmds.get('base_y', 0.0), -1.0, 1.0) * accel_vel_dict['vel_base_xy']
                     v_vel[2] = np.clip(j_cmds.get('base_theta', 0.0), -1.0, 1.0) * accel_vel_dict['vel_base_w']
