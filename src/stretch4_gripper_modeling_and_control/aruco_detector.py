@@ -345,7 +345,7 @@ class ArucoMarkerCollection:
         is_apriltag = getattr(self.config, 'use_apriltag_refinement', False) if self.config else getattr(self, 'use_apriltag_refinement', False)
         if is_apriltag:
             expected_marker_ids = [int(k) for k in self.marker_info.keys() if k != 'default']
-            current_ids = set([int(i[0]) for i in self.aruco_ids]) if self.aruco_ids is not None else set()
+            current_ids = set([int(np.ravel(i)[0]) for i in self.aruco_ids]) if self.aruco_ids is not None else set()
             
             # Check if we are missing any expected markers
             missing_ids = [mid for mid in expected_marker_ids if mid not in current_ids]
@@ -354,7 +354,7 @@ class ArucoMarkerCollection:
                 fb_corners, fb_ids, _ = self.fallback_detector.detectMarkers(self.gray_image)
                 if fb_ids is not None:
                     # Merge fallback detections for markers we missed
-                    fb_ids_flat = [int(i[0]) for i in fb_ids]
+                    fb_ids_flat = [int(np.ravel(i)[0]) for i in fb_ids]
                     for i, fb_id in enumerate(fb_ids_flat):
                         if fb_id in missing_ids:
                             # Add this marker to our primary lists
@@ -372,7 +372,7 @@ class ArucoMarkerCollection:
         
         if self.aruco_ids is not None: 
             for corners, aruco_id in zip(self.aruco_corners, self.aruco_ids):
-                aruco_id = int(aruco_id[0])
+                aruco_id = int(np.ravel(aruco_id)[0])
                 marker = self.collection.get(aruco_id, None)
                 if marker is None:
                     new_marker = ArucoMarker(aruco_id, self.marker_info, config=self.config, show_debug_images=self.show_debug_images, validator=self.validator)

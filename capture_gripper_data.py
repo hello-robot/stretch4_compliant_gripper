@@ -77,7 +77,7 @@ def main():
 
     # Motion parameters
     loop_sleep_time = 0.001
-    pos_pct_epsilon = 5.0
+    pos_pct_epsilon = 10.0 #5.0
 
     camera_matrix = np.array([
         [425.0, 0.0, 320.0],

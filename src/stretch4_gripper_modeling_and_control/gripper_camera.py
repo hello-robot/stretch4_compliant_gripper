@@ -1,6 +1,88 @@
+import os
+import json
+import time
+import tempfile
 import depthai as dai
 import numpy as np
 import datetime
+
+CACHE_FILE_PATH = os.path.join(tempfile.gettempdir(), f"luxonis_device_cache_{os.getuid()}.json")
+CACHE_EXPIRY_SECONDS = 24 * 60 * 60  # Invalidate after 24 hours
+
+def _load_cache():
+    try:
+        if os.path.exists(CACHE_FILE_PATH):
+            with open(CACHE_FILE_PATH, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Warning: Failed to load device cache: {e}")
+    return {}
+
+def _save_cache(cache_data):
+    try:
+        with open(CACHE_FILE_PATH, 'w') as f:
+            json.dump(cache_data, f)
+    except Exception as e:
+        print(f"Warning: Failed to save device cache: {e}")
+
+def clear_device_cache():
+    try:
+        if os.path.exists(CACHE_FILE_PATH):
+            os.remove(CACHE_FILE_PATH)
+    except Exception as e:
+        print(f"Warning: Failed to clear device cache: {e}")
+
+def get_device_port_by_product_name(product_name: str, force_search: bool = False):
+    """
+    Finds the USB port or device ID for a Luxonis camera matching product_name (e.g., 'OAK-D-SR', 'OAK-FFC-3P').
+    First checks the local cache if force_search is False.
+    If not found or cached lookup fails, actively queries connected devices and updates the cache.
+    """
+    devices = dai.Device.getAllAvailableDevices()
+    if not devices:
+        raise RuntimeError("No DepthAI devices found connected over USB.")
+
+    cache_data = _load_cache()
+    current_time = time.time()
+
+    # 1. Check cache first if not forcing search
+    if not force_search:
+        for info in devices:
+            cached_device = cache_data.get(info.deviceId)
+            if cached_device:
+                if current_time - cached_device.get("timestamp", 0) <= CACHE_EXPIRY_SECONDS:
+                    if cached_device.get("product_name") == product_name:
+                        return info.name
+
+    # 2. Actively search connected devices
+    for info in devices:
+        if not force_search:
+            cached_device = cache_data.get(info.deviceId)
+            if cached_device and current_time - cached_device.get("timestamp", 0) <= CACHE_EXPIRY_SECONDS:
+                continue
+
+        try:
+            with dai.Device(maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS, nameOrDeviceId=info.deviceId) as device:
+                actual_product_name = device.getProductName()
+                cache_data[info.deviceId] = {
+                    "product_name": actual_product_name,
+                    "timestamp": current_time,
+                    "name": info.name
+                }
+                _save_cache(cache_data)
+
+                if product_name == actual_product_name:
+                    device.close()
+                    time.sleep(1) # Sleep needed so device returns to ready state
+                    return info.name
+        except Exception as e:
+            print(f"Warning: Could not query device {info.deviceId} ({info.name}): {e}")
+
+    # If active search with cache-skip didn't find the product, do a full forced query before giving up
+    if not force_search:
+        return get_device_port_by_product_name(product_name, force_search=True)
+
+    raise RuntimeError(f"Could not find any connected Luxonis device with product name '{product_name}'. Connected devices: {[d.name for d in devices]}")
 
 def pixel_from_3d(xyz, camera_info):
     x_in, y_in, z_in = xyz
@@ -32,7 +114,7 @@ class GripperCamera:
     Optionally initializes the center camera pipeline in addition.
     Yields left and right NV12 frames converted to BGR, along with depth and center frames.
     """
-    def __init__(self, device_id="3.7.3.1", center_device_id="3.3.1", fps=30, image_size=(640, 400), use_gripper=True, use_center=False, compress=True, oak_buffer_size=1):
+    def __init__(self, device_id=None, center_device_id=None, fps=30, image_size=(640, 400), use_gripper=True, use_center=False, compress=True, oak_buffer_size=1):
         self.device_id = device_id
         self.center_device_id = center_device_id
         self.fps = fps
@@ -61,13 +143,19 @@ class GripperCamera:
         
         # 1. Gripper Camera Pipeline
         if self.use_gripper:
-            if self.device_id:
-                self.gripper_device = dai.Device(maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS, nameOrDeviceId=self.device_id)
-                self.gripper_pipeline = dai.Pipeline(defaultDevice=self.gripper_device)
-            else:
-                self.gripper_device = dai.Device(maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS)
-                self.gripper_pipeline = dai.Pipeline(defaultDevice=self.gripper_device)
+            gripper_port = self.device_id
+            if not gripper_port:
+                gripper_port = get_device_port_by_product_name("OAK-D-SR", force_search=False)
 
+            try:
+                self.gripper_device = dai.Device(maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS, nameOrDeviceId=gripper_port)
+            except Exception as e:
+                print(f"Warning: Initial connection to gripper camera '{gripper_port}' failed ({e}). Performing active device search...")
+                gripper_port = get_device_port_by_product_name("OAK-D-SR", force_search=True)
+                self.gripper_device = dai.Device(maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS, nameOrDeviceId=gripper_port)
+
+            self.device_id = gripper_port
+            self.gripper_pipeline = dai.Pipeline(defaultDevice=self.gripper_device)
             self.gripper_pipeline.setXLinkChunkSize(0)
 
             cam_left = self.gripper_pipeline.create(dai.node.Camera)
@@ -124,12 +212,19 @@ class GripperCamera:
 
         # 2. Center Camera Pipeline
         if self.use_center:
-            if self.center_device_id:
-                device_center = dai.Device(maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS, nameOrDeviceId=self.center_device_id)
-                self.center_pipeline = dai.Pipeline(defaultDevice=device_center)
-            else:
-                self.center_pipeline = dai.Pipeline()
-                
+            center_port = self.center_device_id
+            if not center_port:
+                center_port = get_device_port_by_product_name("OAK-FFC-3P", force_search=False)
+
+            try:
+                self.center_device = dai.Device(maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS, nameOrDeviceId=center_port)
+            except Exception as e:
+                print(f"Warning: Initial connection to center camera '{center_port}' failed ({e}). Performing active device search...")
+                center_port = get_device_port_by_product_name("OAK-FFC-3P", force_search=True)
+                self.center_device = dai.Device(maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS, nameOrDeviceId=center_port)
+
+            self.center_device_id = center_port
+            self.center_pipeline = dai.Pipeline(defaultDevice=self.center_device)
             self.center_pipeline.setXLinkChunkSize(0)
                 
             cam_center = self.center_pipeline.create(dai.node.Camera)

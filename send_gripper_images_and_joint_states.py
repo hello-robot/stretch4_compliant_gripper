@@ -226,8 +226,8 @@ if __name__ == '__main__':
         description='Send images and perfectly synchronized joint state histories via ZMQ.'
     )
     parser.add_argument('-r', '--remote', action='store_true', help='Use this argument when allowing a remote computer to receive images. Configure gripper_networking.py first.')
-    parser.add_argument("--device", type=str, default="3.7.3.1", help="Camera device name or USB port (e.g., '3.7.3.1'). Set to empty string to auto-discover.")
-    parser.add_argument("--center_device", type=str, default="3.3.1", help="Center camera device name or USB port (e.g., '3.3.1'). Set to empty string to auto-discover.")
+    parser.add_argument("--device", type=str, default=None, help="Camera device name or USB port (e.g., '3.4.3.1'). If not specified, automatically searches and uses cached device info.")
+    parser.add_argument("--center_device", type=str, default=None, help="Center camera device name or USB port (e.g., '3.1'). If not specified, automatically searches and uses cached device info.")
     parser.add_argument('-c', '--center', action='store_true', help='Use the center RGB camera instead of the gripper camera.')
     parser.add_argument('-b', '--both', action='store_true', help='Use both the gripper and center RGB cameras.')
     add_camera_args(parser)
@@ -244,7 +244,7 @@ if __name__ == '__main__':
     center_device_id = args.center_device if args.center_device else None
 
     if use_center and not use_gripper:
-        if args.device != "3.4.3.3" and args.center_device == "3.2":
+        if args.device and not args.center_device:
             center_device_id = device_id
             
     main(use_remote_computer, device_id, center_device_id, use_gripper, use_center, image_size, not args.disable_compression, auto_fps, args.oak_buffer_size)
