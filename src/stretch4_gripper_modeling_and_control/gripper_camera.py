@@ -114,13 +114,19 @@ class GripperCamera:
     Optionally initializes the center camera pipeline in addition.
     Yields left and right NV12 frames converted to BGR, along with depth and center frames.
     """
-    def __init__(self, device_id=None, center_device_id=None, fps=30, image_size=(640, 400), use_gripper=True, use_center=False, compress=True, oak_buffer_size=1):
+    def __init__(self, device_id=None, center_device_id=None, fps=30, image_size=(640, 400), use_gripper=True, use_center=False, compress=True, oak_buffer_size=1,
+                 use_imu=False, imu_accel_sensor='linear_acceleration', imu_rotation_sensor='rotation_vector', imu_rate=100):
         self.device_id = device_id
         self.center_device_id = center_device_id
         self.fps = fps
         self.image_size = image_size
         self.compress = compress
         self.oak_buffer_size = oak_buffer_size
+        
+        self.use_imu = use_imu
+        self.imu_accel_sensor = imu_accel_sensor
+        self.imu_rotation_sensor = imu_rotation_sensor
+        self.imu_rate = imu_rate
         
         if self.image_size == (640, 480):
             raise ValueError("The 640x480 resolution option is no longer supported because its cropped aspect ratio does not match the raw sensor images, creating complexities for factory camera calibration.")
@@ -137,6 +143,7 @@ class GripperCamera:
         
         self.q_sync = None
         self.q_center = None
+        self.q_imu = None
         
         self.gripper_device = None
         self.center_device = None
@@ -209,6 +216,36 @@ class GripperCamera:
             stereo.depth.link(sync.inputs["depth"])
 
             self.q_sync = sync.out.createOutputQueue(maxSize=self.oak_buffer_size, blocking=False)
+
+            if self.use_imu:
+                imu = self.gripper_pipeline.create(dai.node.IMU)
+                accel_map = {
+                    'linear_acceleration': dai.IMUSensor.LINEAR_ACCELERATION,
+                    'gravity': dai.IMUSensor.GRAVITY,
+                    'accelerometer': dai.IMUSensor.ACCELEROMETER,
+                    'accelerometer_raw': dai.IMUSensor.ACCELEROMETER_RAW,
+                }
+                rotation_map = {
+                    'rotation_vector': dai.IMUSensor.ROTATION_VECTOR,
+                    'game_rotation_vector': dai.IMUSensor.GAME_ROTATION_VECTOR,
+                    'geomagnetic_rotation_vector': dai.IMUSensor.GEOMAGNETIC_ROTATION_VECTOR,
+                    'arvr_stabilized_rotation_vector': dai.IMUSensor.ARVR_STABILIZED_ROTATION_VECTOR,
+                    'arvr_stabilized_game_rotation_vector': dai.IMUSensor.ARVR_STABILIZED_GAME_ROTATION_VECTOR,
+                }
+                accel_enum = accel_map.get(self.imu_accel_sensor.lower(), dai.IMUSensor.LINEAR_ACCELERATION)
+                rotation_enum = rotation_map.get(self.imu_rotation_sensor.lower(), dai.IMUSensor.ROTATION_VECTOR)
+                
+                sensors = [
+                    accel_enum,
+                    dai.IMUSensor.GYROSCOPE_CALIBRATED,
+                    dai.IMUSensor.MAGNETOMETER_CALIBRATED,
+                    rotation_enum
+                ]
+                imu.enableIMUSensor(sensors, self.imu_rate)
+                # Minimize batching delay on device to support low-latency closed-loop control
+                imu.setBatchReportThreshold(1)
+                imu.setMaxBatchReports(1)
+                self.q_imu = imu.out.createOutputQueue(maxSize=10, blocking=False)
 
         # 2. Center Camera Pipeline
         if self.use_center:
@@ -315,6 +352,16 @@ class GripperCamera:
                     
         return img_left, img_right, depth_img, img_center, timestamp, sequence_num
 
+    def get_imu_packets(self):
+        """Returns all pending IMU packets from the OAK-D IMU queue without blocking."""
+        if not self.use_imu or self.q_imu is None:
+            return []
+        msgs = self.q_imu.tryGetAll()
+        packets = []
+        for m in msgs:
+            packets.extend(m.packets)
+        return packets
+
 def get_valid_combinations_text():
     return """
 Valid Combinations of Resolution, Compression, and FPS:
@@ -374,3 +421,16 @@ def process_camera_args(args):
         else: auto_fps = 30
         
     return image_size, auto_fps
+
+def add_imu_args(parser):
+    """Adds command-line arguments for configuring the wrist camera IMU."""
+    group = parser.add_argument_group('Wrist Camera IMU Options')
+    group.add_argument('--imu_accel_sensor', type=str, default='linear_acceleration',
+                       choices=['linear_acceleration', 'gravity', 'accelerometer', 'accelerometer_raw'],
+                       help='Accelerometer sensor type configured on the BNO086 (default: linear_acceleration).')
+    group.add_argument('--imu_rotation_sensor', type=str, default='rotation_vector',
+                       choices=['rotation_vector', 'game_rotation_vector', 'geomagnetic_rotation_vector',
+                                'arvr_stabilized_rotation_vector', 'arvr_stabilized_game_rotation_vector'],
+                       help='Rotation sensor type configured on the BNO086 (default: rotation_vector).')
+    group.add_argument('--imu_rate', type=int, default=100,
+                       help='Report rate in Hz for IMU sensors (default: 100).')

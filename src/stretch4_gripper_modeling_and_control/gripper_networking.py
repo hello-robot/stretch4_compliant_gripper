@@ -7,6 +7,7 @@ remote_computer_ip = '100.69.89.24'
 # Set these to your preferred port numbers
 gripper_cmd_port = 4407
 gripper_and_joints_port = 4409
+gripper_telemetry_port = 4410
 
 network_debugging = False
 
