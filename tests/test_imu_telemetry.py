@@ -5,6 +5,7 @@ tri-modal synchronization, and tap/bump detection.
 """
 
 import unittest
+import os
 import numpy as np
 import time
 import zmq
@@ -209,6 +210,22 @@ class TestZeroMQRoundTrip(unittest.TestCase):
         pub.close()
         sub.close()
         context.term()
+
+
+class TestSoundFeedback(unittest.TestCase):
+    def test_sound_player_initialization_and_play(self):
+        """Verify SoundPlayer loads point_score.wav and dispatches playback without errors."""
+        from demo_imu_bump_sound import SoundPlayer
+
+        player = SoundPlayer(sound_path='sounds/point_score.wav', volume=0.5)
+        self.assertEqual(player.play_count, 0)
+        self.assertTrue(player.has_pygame or os.path.exists(player.sound_path))
+
+        # Test playback dispatch
+        player.play()
+        self.assertEqual(player.play_count, 1)
+
+        player.close()
 
 
 if __name__ == '__main__':
