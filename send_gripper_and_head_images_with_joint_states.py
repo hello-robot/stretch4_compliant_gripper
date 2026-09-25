@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import os
+import sys
 import time
 import threading
 import collections
@@ -10,13 +11,82 @@ import copy
 import depthai as dai
 
 import stretch4_body.robot.robot_client as rc
-from stretch4_gripper_modeling_and_control.gripper_camera import (
-    get_device_port_by_product_name,
-    add_camera_args,
-    process_camera_args
-)
+from stretch4_gripper_modeling_and_control.gripper_camera import get_device_port_by_product_name
 from stretch4_gripper_modeling_and_control import gripper_networking as gn
 
+
+# ==============================================================================
+# CAMERA CONFIGURATION & VALID COMBINATIONS HELPERS
+# ==============================================================================
+
+def get_wrist_valid_combinations_text():
+    return """
+Valid Combinations of Resolution, Compression, and FPS for Wrist Camera:
+  Uncompressed:
+    - 400 (640x400)   -> 30 fps
+    - 500 (800x500)   -> 15 fps
+    - 600 (960x600)   -> 10 fps
+    - 640 (1024x640)  -> 10 fps
+    - 800 (1280x800)  -> 5 fps
+  Compressed (MJPEG):
+    - 400 (640x400)   -> 30 fps
+    - 500 (800x500)   -> 30 fps
+    - 600 (960x600)   -> 20 fps
+    - 640 (1024x640)  -> 15 fps
+    - 800 (1280x800)  -> 10 fps
+"""
+
+def get_head_valid_combinations_text():
+    return """
+Valid Combinations of Resolution, Compression, and FPS for Head Camera:
+  Uncompressed:
+    - 400 (640x400)   -> 30 fps
+    - 600 (960x600)   -> 30 fps
+    - 800 (1280x800)  -> 30 fps
+    - 1200 (1920x1200)-> 30 fps
+  Compressed (MJPEG):
+    - 400 (640x400)   -> 30 fps
+    - 600 (960x600)   -> 30 fps
+    - 800 (1280x800)  -> 30 fps
+    - 1200 (1920x1200)-> 30 fps
+"""
+
+WRIST_RES_MAP = {
+    400: (640, 400),
+    500: (800, 500),
+    600: (960, 600),
+    640: (1024, 640),
+    800: (1280, 800)
+}
+
+HEAD_RES_MAP = {
+    400: (640, 400),
+    600: (960, 600),
+    800: (1280, 800),
+    1200: (1920, 1200)
+}
+
+def get_default_wrist_fps(resolution, compress):
+    """Auto FPS limits guaranteeing low latency on USB 2.0 (under ~30 MB/s limit)."""
+    if not compress:
+        if resolution >= 800: return 5
+        elif resolution >= 600: return 10
+        elif resolution >= 500: return 15
+        else: return 30
+    else:
+        if resolution >= 800: return 10
+        elif resolution >= 640: return 15
+        elif resolution >= 600: return 20
+        else: return 30
+
+def get_default_head_fps(resolution, compress):
+    """Head camera runs on USB 3.0 (SUPER_PLUS) bus supporting up to 30 fps across all resolutions."""
+    return 30
+
+
+# ==============================================================================
+# ROBOT STATE POLLER
+# ==============================================================================
 
 class RobotStatePoller:
     """
@@ -108,6 +178,10 @@ class RobotStatePoller:
             self.history_buffer.clear()
             return history
 
+
+# ==============================================================================
+# CAMERA PIPELINES
+# ==============================================================================
 
 class WristCameraPipeline:
     """
@@ -212,7 +286,7 @@ class HeadCameraPipeline:
     unnecessary sensor capture, USB transfer, and ISP overhead.
     Maintains a high-frequency background ring buffer to allow closest-in-time synchronization.
     """
-    def __init__(self, camera_name='left', device_id=None, fps=30, resolution_height=800, compress=True, oak_buffer_size=1):
+    def __init__(self, camera_name='left', device_id=None, fps=30, image_size=(1280, 800), compress=True, oak_buffer_size=1):
         self.camera_name = camera_name.lower()
         if self.camera_name not in ['left', 'right']:
             raise ValueError(f"Unsupported head camera side: {self.camera_name}. Must be 'left' or 'right'.")
@@ -221,19 +295,9 @@ class HeadCameraPipeline:
         self.board_socket = dai.CameraBoardSocket.CAM_C if self.camera_name == 'left' else dai.CameraBoardSocket.CAM_B
         self.model_name = "head_left" if self.camera_name == 'left' else "head_right"
         self.fps = fps
-        self.resolution_height = resolution_height
+        self.image_size = image_size
         self.compress = compress
         self.oak_buffer_size = oak_buffer_size
-        
-        res_map = {
-            400: (640, 400),
-            600: (960, 600),
-            800: (1280, 800),
-            1200: (1920, 1200)
-        }
-        if self.resolution_height not in res_map:
-            raise ValueError(f"Invalid head resolution height {self.resolution_height}. Supported: {list(res_map.keys())}")
-        self.image_size = res_map[self.resolution_height]
         
         self.device_id = device_id
         if not self.device_id:
@@ -271,7 +335,7 @@ class HeadCameraPipeline:
         else:
             self.q_camera = out_node.createOutputQueue(maxSize=self.oak_buffer_size, blocking=False)
             
-        self.history_size = max(100, self.fps * 2) # Buffer ~2 seconds worth of frames
+        self.history_size = max(100, int(self.fps * 2)) # Buffer ~2 seconds worth of frames
         self.history_buffer = collections.deque(maxlen=self.history_size)
         self.lock = threading.Lock()
         self.running = False
@@ -354,8 +418,12 @@ class HeadCameraPipeline:
         return None, None
 
 
+# ==============================================================================
+# MAIN BROADCAST LOOP
+# ==============================================================================
+
 def main(use_remote_computer, wrist_device_id, head_device_id, wrist_camera_side, head_camera_side,
-         wrist_image_size, head_res_height, compress, wrist_fps, head_fps, oak_buffer_size):
+         wrist_image_size, head_image_size, wrist_compress, head_compress, wrist_fps, head_fps, oak_buffer_size):
     print("Starting Robot Client...")
     robot = rc.RobotClient()
     robot.startup()
@@ -368,24 +436,24 @@ def main(use_remote_computer, wrist_device_id, head_device_id, wrist_camera_side
     wrist_camera = None
     head_camera = None
     try:
-        print(f"Initializing Wrist Camera Pipeline (Camera: {wrist_camera_side}, Size: {wrist_image_size}, FPS: {wrist_fps}, Compress: {compress})...")
+        print(f"Initializing Wrist Camera Pipeline (Camera: {wrist_camera_side}, Size: {wrist_image_size}, FPS: {wrist_fps}, Compress: {wrist_compress})...")
         wrist_camera = WristCameraPipeline(
             camera_name=wrist_camera_side,
             device_id=wrist_device_id,
             fps=wrist_fps,
             image_size=wrist_image_size,
-            compress=compress,
+            compress=wrist_compress,
             oak_buffer_size=oak_buffer_size
         )
         wrist_camera.start()
 
-        print(f"Initializing Head Camera Pipeline (Camera: {head_camera_side}, Height: {head_res_height}p, FPS: {head_fps}, Compress: {compress})...")
+        print(f"Initializing Head Camera Pipeline (Camera: {head_camera_side}, Size: {head_image_size}, FPS: {head_fps}, Compress: {head_compress})...")
         head_camera = HeadCameraPipeline(
             camera_name=head_camera_side,
             device_id=head_device_id,
             fps=head_fps,
-            resolution_height=head_res_height,
-            compress=compress,
+            image_size=head_image_size,
+            compress=head_compress,
             oak_buffer_size=oak_buffer_size
         )
         head_camera.start()
@@ -471,7 +539,7 @@ def main(use_remote_computer, wrist_device_id, head_device_id, wrist_camera_side
                 output_dict['head_distortion_coefficients'] = head_D
 
             # Add wrist image
-            if compress:
+            if wrist_compress:
                 output_dict['wrist_color_image_compressed'] = np.array(wrist_img)
                 # Backward compatibility key
                 output_dict['color_image_compressed'] = output_dict['wrist_color_image_compressed']
@@ -486,7 +554,7 @@ def main(use_remote_computer, wrist_device_id, head_device_id, wrist_camera_side
                 output_dict['head_camera_timestamp'] = head_timestamp
                 output_dict['head_sync_offset_ms'] = (head_timestamp - wrist_timestamp) * 1000.0 if head_timestamp else 0.0
 
-                if compress:
+                if head_compress:
                     output_dict['head_color_image_compressed'] = np.array(head_img)
                 else:
                     output_dict['head_color_image'] = head_img
@@ -507,35 +575,82 @@ def main(use_remote_computer, wrist_device_id, head_device_id, wrist_camera_side
         print("\nStopped transmitting.")
 
 
+# ==============================================================================
+# CLI ARGUMENT PARSING
+# ==============================================================================
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         prog='Send Gripper and Head Images with Joint States',
-        description='Broadcast synchronized wrist camera, head fisheye camera, and joint states via ZMQ for VLA control.'
+        description='Broadcast synchronized wrist camera, head fisheye camera, and joint states via ZMQ for VLA control.',
+        formatter_class=argparse.RawTextHelpFormatter
     )
+
     parser.add_argument('-r', '--remote', action='store_true', help='Allow a remote computer to receive data. Configure gripper_networking.py first.')
-    parser.add_argument('--wrist_camera', choices=['left', 'right'], default='right', help="Wrist OAK-D SR camera side to capture (left: CAM_B, right: CAM_C). Default: 'right'.")
-    parser.add_argument('--head_camera', choices=['left', 'right'], default='left', help="Head OAK-FFC 3P fisheye camera to capture (left: CAM_C, right: CAM_B). Default: 'left'.")
-    parser.add_argument('--wrist_device', type=str, default=None, help="Device port/ID for the wrist OAK-D SR camera. If None, automatically detected.")
-    parser.add_argument('--head_device', type=str, default=None, help="Device port/ID for the head OAK-FFC-3P camera. If None, automatically detected.")
-    parser.add_argument('--head_resolution', type=int, choices=[400, 600, 800, 1200], default=800, help="Vertical resolution for the head fisheye camera (default: 800 -> 1280x800).")
-    parser.add_argument('--head_fps', type=int, default=30, help="Framerate for the head fisheye camera (default: 30).")
-    add_camera_args(parser)
+    parser.add_argument('--oak_buffer_size', type=int, default=1, help='Size of the internal camera queue on both Luxonis devices. Default 1 to minimize latency.')
+
+    # Wrist Camera Options
+    wrist_group = parser.add_argument_group('Wrist Camera Options')
+    wrist_group.add_argument('--wrist_camera', choices=['left', 'right'], default='right',
+                             help="Wrist OAK-D SR camera side to capture (left: CAM_B, right: CAM_C). Default: 'right'.")
+    wrist_group.add_argument('--wrist_device', type=str, default=None,
+                             help="Device port/ID for the wrist OAK-D SR camera. If None, automatically detected.")
+    wrist_group.add_argument('--wrist_resolution', '--resolution', dest='wrist_resolution', type=int, default=500,
+                             help='Vertical resolution of the wrist camera image. Options: 400 (640x400), 500 (800x500), 600 (960x600), 640 (1024x640), 800 (1280x800).\n' + get_wrist_valid_combinations_text())
+    wrist_group.add_argument('--wrist_fps', '--fps', dest='wrist_fps', type=int, default=None,
+                             help='Framerate (FPS) for the wrist camera. If not specified, automatically selected based on resolution and compression.')
+    wrist_group.add_argument('--disable_wrist_compression', '--disable_compression', dest='disable_wrist_compression', action='store_true',
+                             help='Disable MJPEG compression for the wrist camera. Sends uncompressed NV12 frames.')
+
+    # Head Camera Options
+    head_group = parser.add_argument_group('Head Camera Options')
+    head_group.add_argument('--head_camera', choices=['left', 'right'], default='left',
+                            help="Head OAK-FFC 3P fisheye camera to capture (left: CAM_C, right: CAM_B). Default: 'left'.")
+    head_group.add_argument('--head_device', type=str, default=None,
+                            help="Device port/ID for the head OAK-FFC-3P camera. If None, automatically detected.")
+    head_group.add_argument('--head_resolution', type=int, default=800,
+                            help='Vertical resolution of the head fisheye camera. Options: 400 (640x400), 600 (960x600), 800 (1280x800), 1200 (1920x1200).\n' + get_head_valid_combinations_text())
+    head_group.add_argument('--head_fps', type=int, default=None,
+                            help='Framerate (FPS) for the head camera. If not specified, automatically selected based on resolution and compression (default: 30 fps).')
+    head_group.add_argument('--disable_head_compression', action='store_true',
+                            help='Disable MJPEG compression for the head camera. Sends uncompressed NV12 frames.')
+
     args = parser.parse_args()
 
-    wrist_image_size, auto_wrist_fps = process_camera_args(args)
-    use_remote_computer = args.remote
-    compress = not args.disable_compression
+    # Process Wrist Options
+    if args.wrist_resolution not in WRIST_RES_MAP:
+        if args.wrist_resolution == 480:
+            print("Error: The 640x480 (480) resolution option is not supported because its cropped aspect ratio does not match the raw sensor images.")
+            sys.exit(1)
+        print(f"Error: Invalid wrist resolution '{args.wrist_resolution}'. Available options are:")
+        for k, v in WRIST_RES_MAP.items():
+            print(f"  {k} -> {v[0]}x{v[1]}")
+        sys.exit(1)
+    wrist_image_size = WRIST_RES_MAP[args.wrist_resolution]
+    wrist_compress = not args.disable_wrist_compression
+    wrist_fps = args.wrist_fps if args.wrist_fps is not None else get_default_wrist_fps(args.wrist_resolution, wrist_compress)
+
+    # Process Head Options
+    if args.head_resolution not in HEAD_RES_MAP:
+        print(f"Error: Invalid head resolution '{args.head_resolution}'. Available options are:")
+        for k, v in HEAD_RES_MAP.items():
+            print(f"  {k} -> {v[0]}x{v[1]}")
+        sys.exit(1)
+    head_image_size = HEAD_RES_MAP[args.head_resolution]
+    head_compress = not args.disable_head_compression
+    head_fps = args.head_fps if args.head_fps is not None else get_default_head_fps(args.head_resolution, head_compress)
 
     main(
-        use_remote_computer=use_remote_computer,
+        use_remote_computer=args.remote,
         wrist_device_id=args.wrist_device,
         head_device_id=args.head_device,
         wrist_camera_side=args.wrist_camera,
         head_camera_side=args.head_camera,
         wrist_image_size=wrist_image_size,
-        head_res_height=args.head_resolution,
-        compress=compress,
-        wrist_fps=auto_wrist_fps,
-        head_fps=args.head_fps,
+        head_image_size=head_image_size,
+        wrist_compress=wrist_compress,
+        head_compress=head_compress,
+        wrist_fps=wrist_fps,
+        head_fps=head_fps,
         oak_buffer_size=args.oak_buffer_size
     )
