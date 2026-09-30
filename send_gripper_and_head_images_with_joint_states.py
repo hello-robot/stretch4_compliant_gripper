@@ -88,6 +88,9 @@ def get_default_head_fps(resolution, compress):
 # ROBOT STATE POLLER
 # ==============================================================================
 
+GRIPPER_JOINTS = ('stretch_gripper', 'parallel_gripper')
+"""The end-of-arm keys a gripper can report under: SG4 and PG4."""
+
 class RobotStatePoller:
     """
     Background poller thread querying stretch4_body joint states at high rate (~500Hz).
@@ -109,10 +112,17 @@ class RobotStatePoller:
             self.robot.pull_status()
             st = self.robot.status
             eoa = st.get('end_of_arm', {})
-            gripper_st = eoa.get('stretch_gripper', {})
-            
-            # The stretch_gripper timestamp is a good pulse check for new lower-level samples
-            curr_ts = gripper_st.get('timestamp_pc', 0.0)
+            # Whichever gripper the robot has on: the stretch gripper (SG4) reports
+            # `pos_pct`, the parallel jaw gripper (PG4) `pos_mm`. Read off the
+            # status rather than the params, because the status is what the robot
+            # actually has fitted.
+            gripper_joint = next((name for name in GRIPPER_JOINTS if name in eoa), None)
+            gripper_st = eoa.get(gripper_joint, {}) if gripper_joint else {}
+
+            # The gripper's timestamp is a good pulse check for new lower-level
+            # samples. Without a gripper, wrist_yaw is on the same bus.
+            pulse_st = gripper_st or eoa.get('wrist_yaw', {})
+            curr_ts = pulse_st.get('timestamp_pc', 0.0)
             
             if self.last_ts is not None and curr_ts == self.last_ts:
                 # No new data update from lower level hardware
@@ -129,11 +139,17 @@ class RobotStatePoller:
             wrist_pitch = eoa.get('wrist_pitch', {})
             wrist_roll = eoa.get('wrist_roll', {})
 
+            gripper_data = {
+                'joint': gripper_joint,
+                'effort': gripper_st.get('effort', 0.0)
+            }
+            if gripper_joint == 'parallel_gripper':
+                gripper_data['pos_mm'] = gripper_st.get('pos_mm', 0.0)
+            else:
+                gripper_data['pos_pct'] = gripper_st.get('pos_pct', 0.0)
+
             data = {
-                'gripper': {
-                    'pos_pct': gripper_st.get('pos_pct', 0.0), 
-                    'effort': gripper_st.get('effort', 0.0)
-                },
+                'gripper': gripper_data,
                 'lift': {
                     'height': lift_st.get('pos', 0.0)
                 },
