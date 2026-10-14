@@ -298,18 +298,25 @@ class WristCameraPipeline:
 class HeadCameraPipeline:
     """
     Dedicated low-latency pipeline for the head-mounted Luxonis OAK-FFC 3P board.
-    Captures ONLY the requested single fisheye camera (left: CAM_C or right: CAM_B) to eliminate
-    unnecessary sensor capture, USB transfer, and ISP overhead.
-    Maintains a high-frequency background ring buffer to allow closest-in-time synchronization.
+    Captures ONLY the requested fisheye camera(s) (left: CAM_C, right: CAM_B) to eliminate
+    unnecessary sensor capture, USB transfer, and ISP overhead. Both fisheye cameras can be
+    captured at once from the single device by passing camera_names=['left', 'right'].
+    Maintains a high-frequency background ring buffer per camera to allow closest-in-time synchronization.
     """
-    def __init__(self, camera_name='left', device_id=None, fps=30, image_size=(1280, 800), compress=True, oak_buffer_size=1):
-        self.camera_name = camera_name.lower()
-        if self.camera_name not in ['left', 'right']:
-            raise ValueError(f"Unsupported head camera side: {self.camera_name}. Must be 'left' or 'right'.")
-            
+    def __init__(self, camera_names=('left',), device_id=None, fps=30, image_size=(1280, 800), compress=True, oak_buffer_size=1):
+        if isinstance(camera_names, str):
+            camera_names = [camera_names]
+        self.camera_names = [name.lower() for name in camera_names]
+        for name in self.camera_names:
+            if name not in ['left', 'right']:
+                raise ValueError(f"Unsupported head camera side: {name}. Must be 'left' or 'right'.")
+
         # Left fisheye camera is connected to CAM_C; Right fisheye camera is connected to CAM_B
-        self.board_socket = dai.CameraBoardSocket.CAM_C if self.camera_name == 'left' else dai.CameraBoardSocket.CAM_B
-        self.model_name = "head_left" if self.camera_name == 'left' else "head_right"
+        self.board_sockets = {
+            name: dai.CameraBoardSocket.CAM_C if name == 'left' else dai.CameraBoardSocket.CAM_B
+            for name in self.camera_names
+        }
+        self.model_names = {name: f"head_{name}" for name in self.camera_names}
         self.fps = fps
         self.image_size = image_size
         self.compress = compress
@@ -328,31 +335,33 @@ class HeadCameraPipeline:
             
         self.pipeline = dai.Pipeline(defaultDevice=self.device)
         self.pipeline.setXLinkChunkSize(0)
-        
-        cam_node = self.pipeline.create(dai.node.Camera)
-        cam_node.setSensorType(dai.CameraSensorType.COLOR)
-        cam_node.build(boardSocket=self.board_socket, sensorFps=self.fps)
-        cam_node.setNumFramesPools(isp=self.oak_buffer_size + 1, raw=self.oak_buffer_size + 1, imgmanip=self.oak_buffer_size + 1)
-        
-        out_node = cam_node.requestOutput(
-            size=self.image_size,
-            type=dai.ImgFrame.Type.NV12,
-            resizeMode=dai.ImgResizeMode.CROP,
-            enableUndistortion=False,
-        )
-        
-        if self.compress:
-            videoEnc = self.pipeline.create(dai.node.VideoEncoder)
-            videoEnc.setDefaultProfilePreset(self.fps, dai.VideoEncoderProperties.Profile.MJPEG)
-            videoEnc.setQuality(80)
-            videoEnc.setNumFramesPool(self.oak_buffer_size + 1)
-            out_node.link(videoEnc.input)
-            self.q_camera = videoEnc.bitstream.createOutputQueue(maxSize=self.oak_buffer_size, blocking=False)
-        else:
-            self.q_camera = out_node.createOutputQueue(maxSize=self.oak_buffer_size, blocking=False)
+
+        self.q_cameras = {}
+        for name in self.camera_names:
+            cam_node = self.pipeline.create(dai.node.Camera)
+            cam_node.setSensorType(dai.CameraSensorType.COLOR)
+            cam_node.build(boardSocket=self.board_sockets[name], sensorFps=self.fps)
+            cam_node.setNumFramesPools(isp=self.oak_buffer_size + 1, raw=self.oak_buffer_size + 1, imgmanip=self.oak_buffer_size + 1)
+            
+            out_node = cam_node.requestOutput(
+                size=self.image_size,
+                type=dai.ImgFrame.Type.NV12,
+                resizeMode=dai.ImgResizeMode.CROP,
+                enableUndistortion=False,
+            )
+            
+            if self.compress:
+                videoEnc = self.pipeline.create(dai.node.VideoEncoder)
+                videoEnc.setDefaultProfilePreset(self.fps, dai.VideoEncoderProperties.Profile.MJPEG)
+                videoEnc.setQuality(80)
+                videoEnc.setNumFramesPool(self.oak_buffer_size + 1)
+                out_node.link(videoEnc.input)
+                self.q_cameras[name] = videoEnc.bitstream.createOutputQueue(maxSize=self.oak_buffer_size, blocking=False)
+            else:
+                self.q_cameras[name] = out_node.createOutputQueue(maxSize=self.oak_buffer_size, blocking=False)
             
         self.history_size = max(100, int(self.fps * 2)) # Buffer ~2 seconds worth of frames
-        self.history_buffer = collections.deque(maxlen=self.history_size)
+        self.history_buffers = {name: collections.deque(maxlen=self.history_size) for name in self.camera_names}
         self.lock = threading.Lock()
         self.running = False
 
@@ -376,10 +385,14 @@ class HeadCameraPipeline:
             self.device.close()
 
     def _poll_loop(self):
-        """Background thread continuously draining non-blocking queue to prevent buffer bloat."""
+        """Background thread continuously draining non-blocking queues to prevent buffer bloat."""
         while self.running:
-            msg = self.q_camera.tryGet()
-            if msg is not None:
+            got_frame = False
+            for name, q_camera in self.q_cameras.items():
+                msg = q_camera.tryGet()
+                if msg is None:
+                    continue
+                got_frame = True
                 if self.compress:
                     img = msg.getData()
                 else:
@@ -388,25 +401,28 @@ class HeadCameraPipeline:
                 timestamp = msg.getTimestamp().total_seconds()
                 seq_num = msg.getSequenceNum()
                 with self.lock:
-                    self.history_buffer.append((img, timestamp, seq_num))
-            else:
+                    self.history_buffers[name].append((img, timestamp, seq_num))
+            if not got_frame:
                 time.sleep(0.002)
 
-    def get_closest_frame(self, target_timestamp):
-        """Finds the frame in the ring buffer with timestamp closest to target_timestamp."""
+    def get_closest_frame(self, camera_name, target_timestamp):
+        """Finds the frame in camera_name's ring buffer with timestamp closest to target_timestamp."""
         with self.lock:
-            if not self.history_buffer:
+            history_buffer = self.history_buffers[camera_name]
+            if not history_buffer:
                 return None, None, None
-            return min(self.history_buffer, key=lambda x: abs(x[1] - target_timestamp))
+            return min(history_buffer, key=lambda x: abs(x[1] - target_timestamp))
 
-    def get_intrinsics(self):
+    def get_intrinsics(self, camera_name):
         """Returns camera matrix M and distortion coefficients D (falling back to fleet calibration)."""
+        board_socket = self.board_sockets[camera_name]
+        model_name = self.model_names[camera_name]
         M, D = None, None
         if self.device is not None:
             try:
                 calib = self.device.readCalibration()
-                M = np.array(calib.getCameraIntrinsics(self.board_socket, self.image_size[0], self.image_size[1]), dtype=np.float64)
-                D = np.array(calib.getDistortionCoefficients(self.board_socket), dtype=np.float64)
+                M = np.array(calib.getCameraIntrinsics(board_socket, self.image_size[0], self.image_size[1]), dtype=np.float64)
+                D = np.array(calib.getDistortionCoefficients(board_socket), dtype=np.float64)
                 return M, D
             except Exception:
                 pass
@@ -415,7 +431,7 @@ class HeadCameraPipeline:
             from stretch4_body.subsystem.cameras.models.camera_calibration import RGBCameraCalibration
             from stretch4_body.subsystem.cameras import RGBCameras
             fleet_calib = RGBCameraCalibration.load_calibration_from_fleet_path(
-                camera_type=RGBCameras[self.model_name], is_flip_width_and_height=False
+                camera_type=RGBCameras[model_name], is_flip_width_and_height=False
             )
             if fleet_calib and fleet_calib.camera_matrix is not None:
                 M = np.array(fleet_calib.camera_matrix, dtype=np.float64)
@@ -429,7 +445,7 @@ class HeadCameraPipeline:
                 M[1, 2] *= scale_y
                 return M, D
         except Exception as ex:
-            print(f"Warning: could not load fleet calibration for {self.model_name}: {ex}")
+            print(f"Warning: could not load fleet calibration for {model_name}: {ex}")
             
         return None, None
 
@@ -438,7 +454,7 @@ class HeadCameraPipeline:
 # MAIN BROADCAST LOOP
 # ==============================================================================
 
-def main(use_remote_computer, wrist_device_id, head_device_id, wrist_camera_side, head_camera_side,
+def main(use_remote_computer, wrist_device_id, head_device_id, wrist_camera_side, head_camera_sides,
          wrist_image_size, head_image_size, wrist_compress, head_compress, wrist_fps, head_fps, oak_buffer_size):
     print("Starting Robot Client...")
     robot = rc.RobotClient()
@@ -463,9 +479,10 @@ def main(use_remote_computer, wrist_device_id, head_device_id, wrist_camera_side
         )
         wrist_camera.start()
 
-        print(f"Initializing Head Camera Pipeline (Camera: {head_camera_side}, Size: {head_image_size}, FPS: {head_fps}, Compress: {head_compress})...")
+        head_cameras_text = ','.join(head_camera_sides)
+        print(f"Initializing Head Camera Pipeline (Camera: {head_cameras_text}, Size: {head_image_size}, FPS: {head_fps}, Compress: {head_compress})...")
         head_camera = HeadCameraPipeline(
-            camera_name=head_camera_side,
+            camera_names=head_camera_sides,
             device_id=head_device_id,
             fps=head_fps,
             image_size=head_image_size,
@@ -489,13 +506,16 @@ def main(use_remote_computer, wrist_device_id, head_device_id, wrist_camera_side
         gn.print_network_info()
 
         wrist_M, wrist_D = wrist_camera.get_intrinsics()
-        head_M, head_D = head_camera.get_intrinsics()
+        head_intrinsics = {side: head_camera.get_intrinsics(side) for side in head_camera_sides}
+        # The first requested head camera also goes out under the unprefixed
+        # head_* keys, so receivers expecting a single head camera keep working.
+        primary_head_side = head_camera_sides[0]
 
         # Sliding window for joint states: 1.0 second history (~500 samples at 500Hz)
         sliding_window = collections.deque(maxlen=500)
         robot_id = os.environ.get('HELLO_FLEET_ID')
 
-        print(f"\nBroadcasting synchronized wrist ({wrist_camera_side}) + head ({head_camera_side}) frames and joint states...")
+        print(f"\nBroadcasting synchronized wrist ({wrist_camera_side}) + head ({head_cameras_text}) frames and joint states...")
         print("Press Ctrl+C to stop.\n")
 
         while True:
@@ -510,8 +530,8 @@ def main(use_remote_computer, wrist_device_id, head_device_id, wrist_camera_side
             system_boot_epoch = time.time() - time.monotonic()
             sys_timestamp = system_boot_epoch + wrist_timestamp
 
-            # Retrieve closest frame from head camera ring buffer
-            head_img, head_timestamp, head_seq_num = head_camera.get_closest_frame(wrist_timestamp)
+            # Retrieve closest frame from each head camera's ring buffer
+            head_frames = {side: head_camera.get_closest_frame(side, wrist_timestamp) for side in head_camera_sides}
 
             new_history = poller.get_and_clear_history()
             sliding_window.extend(new_history)
@@ -535,7 +555,8 @@ def main(use_remote_computer, wrist_device_id, head_device_id, wrist_camera_side
             output_dict = {
                 'robot_id': robot_id,
                 'wrist_camera_side': wrist_camera_side,
-                'head_camera_side': head_camera_side,
+                'head_camera_side': primary_head_side,
+                'head_camera_sides': list(head_camera_sides),
                 'image_number': wrist_seq_num,
                 'camera_timestamp': wrist_timestamp,
                 'system_timestamp': sys_timestamp,
@@ -550,9 +571,14 @@ def main(use_remote_computer, wrist_device_id, head_device_id, wrist_camera_side
                 output_dict['camera_matrix'] = wrist_M
                 output_dict['distortion_coefficients'] = wrist_D
 
-            if head_M is not None:
-                output_dict['head_camera_matrix'] = head_M
-                output_dict['head_distortion_coefficients'] = head_D
+            for side, (head_M, head_D) in head_intrinsics.items():
+                if head_M is None:
+                    continue
+                output_dict[f'head_{side}_camera_matrix'] = head_M
+                output_dict[f'head_{side}_distortion_coefficients'] = head_D
+                if side == primary_head_side:
+                    output_dict['head_camera_matrix'] = head_M
+                    output_dict['head_distortion_coefficients'] = head_D
 
             # Add wrist image
             if wrist_compress:
@@ -564,16 +590,24 @@ def main(use_remote_computer, wrist_device_id, head_device_id, wrist_camera_side
                 # Backward compatibility key
                 output_dict['color_image'] = wrist_img
 
-            # Add head image
-            if head_img is not None:
-                output_dict['head_image_number'] = head_seq_num
-                output_dict['head_camera_timestamp'] = head_timestamp
-                output_dict['head_sync_offset_ms'] = (head_timestamp - wrist_timestamp) * 1000.0 if head_timestamp else 0.0
-
+            # Add head images
+            for side, (head_img, head_timestamp, head_seq_num) in head_frames.items():
+                if head_img is None:
+                    continue
+                head_fields = {
+                    'image_number': head_seq_num,
+                    'camera_timestamp': head_timestamp,
+                    'sync_offset_ms': (head_timestamp - wrist_timestamp) * 1000.0 if head_timestamp else 0.0,
+                }
                 if head_compress:
-                    output_dict['head_color_image_compressed'] = np.array(head_img)
+                    head_fields['color_image_compressed'] = np.array(head_img)
                 else:
-                    output_dict['head_color_image'] = head_img
+                    head_fields['color_image'] = head_img
+
+                for name, value in head_fields.items():
+                    output_dict[f'head_{side}_{name}'] = value
+                    if side == primary_head_side:
+                        output_dict[f'head_{name}'] = value
 
             socket.send_pyobj(output_dict)
 
@@ -620,8 +654,10 @@ if __name__ == '__main__':
 
     # Head Camera Options
     head_group = parser.add_argument_group('Head Camera Options')
-    head_group.add_argument('--head_camera', choices=['left', 'right'], default='left',
-                            help="Head OAK-FFC 3P fisheye camera to capture (left: CAM_C, right: CAM_B). Default: 'left'.")
+    head_group.add_argument('--head_camera', type=str, default='left',
+                            help="Head OAK-FFC 3P fisheye camera(s) to capture (left: CAM_C, right: CAM_B).\n"
+                                 "Use 'left,right' to send both. The first one listed is also sent under the\n"
+                                 "unprefixed head_* keys for single-camera receivers. Default: 'left'.")
     head_group.add_argument('--head_device', type=str, default=None,
                             help="Device port/ID for the head OAK-FFC-3P camera. If None, automatically detected.")
     head_group.add_argument('--head_resolution', type=int, default=800,
@@ -647,6 +683,10 @@ if __name__ == '__main__':
     wrist_fps = args.wrist_fps if args.wrist_fps is not None else get_default_wrist_fps(args.wrist_resolution, wrist_compress)
 
     # Process Head Options
+    head_camera_sides = [side.strip().lower() for side in args.head_camera.split(',') if side.strip()]
+    if not head_camera_sides or any(side not in ('left', 'right') for side in head_camera_sides) or len(set(head_camera_sides)) != len(head_camera_sides):
+        print(f"Error: Invalid head camera '{args.head_camera}'. Use 'left', 'right', 'left,right', or 'right,left'.")
+        sys.exit(1)
     if args.head_resolution not in HEAD_RES_MAP:
         print(f"Error: Invalid head resolution '{args.head_resolution}'. Available options are:")
         for k, v in HEAD_RES_MAP.items():
@@ -661,7 +701,7 @@ if __name__ == '__main__':
         wrist_device_id=args.wrist_device,
         head_device_id=args.head_device,
         wrist_camera_side=args.wrist_camera,
-        head_camera_side=args.head_camera,
+        head_camera_sides=head_camera_sides,
         wrist_image_size=wrist_image_size,
         head_image_size=head_image_size,
         wrist_compress=wrist_compress,
