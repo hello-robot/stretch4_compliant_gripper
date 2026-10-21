@@ -9,10 +9,12 @@ import zmq
 import numpy as np
 import copy
 import depthai as dai
+import yaml
 
 import stretch4_body.robot.robot_client as rc
 from stretch4_gripper_modeling_and_control.gripper_camera import get_device_port_by_product_name
 from stretch4_gripper_modeling_and_control import gripper_networking as gn
+from stretch4_gripper_modeling_and_control import calibration_utils as cu
 
 
 # ==============================================================================
@@ -454,8 +456,24 @@ class HeadCameraPipeline:
 # MAIN BROADCAST LOOP
 # ==============================================================================
 
+def load_camera_calibration(path):
+    """Loads the robot's camera calibration YAML, or returns None if it is unavailable."""
+    if path is None:
+        print("Warning: no camera calibration file found. Receivers will not get 'camera_calibration'.")
+        return None
+    try:
+        with open(path, 'r') as f:
+            calibration = yaml.safe_load(f)
+    except Exception as e:
+        print(f"Warning: could not load camera calibration '{path}': {e}")
+        return None
+    print(f"Sending camera calibration from {path} (cameras: {', '.join(calibration)})")
+    return calibration
+
+
 def main(use_remote_computer, wrist_device_id, head_device_id, wrist_camera_side, head_camera_sides,
-         wrist_image_size, head_image_size, wrist_compress, head_compress, wrist_fps, head_fps, oak_buffer_size):
+         wrist_image_size, head_image_size, wrist_compress, head_compress, wrist_fps, head_fps, oak_buffer_size,
+         camera_calibration_path=None):
     print("Starting Robot Client...")
     robot = rc.RobotClient()
     robot.startup()
@@ -515,6 +533,10 @@ def main(use_remote_computer, wrist_device_id, head_device_id, wrist_camera_side
         sliding_window = collections.deque(maxlen=500)
         robot_id = os.environ.get('HELLO_FLEET_ID')
 
+        # Sent with every message: receivers conflate to the latest message, so
+        # one sent only at startup could be missed.
+        camera_calibration = load_camera_calibration(camera_calibration_path)
+
         print(f"\nBroadcasting synchronized wrist ({wrist_camera_side}) + head ({head_cameras_text}) frames and joint states...")
         print("Press Ctrl+C to stop.\n")
 
@@ -563,6 +585,10 @@ def main(use_remote_computer, wrist_device_id, head_device_id, wrist_camera_side
                 'joint_state_history': new_history,
                 'closest_joint_state': closest_joint_state,
             }
+
+            if camera_calibration is not None:
+                output_dict['camera_calibration'] = camera_calibration
+                output_dict['camera_calibration_path'] = camera_calibration_path
 
             if wrist_M is not None:
                 output_dict['wrist_camera_matrix'] = wrist_M
@@ -637,6 +663,9 @@ if __name__ == '__main__':
     )
 
     parser.add_argument('-r', '--remote', action='store_true', help='Allow a remote computer to receive data. Configure gripper_networking.py first.')
+    parser.add_argument('--camera_calibration', type=str, default=None,
+                        help='Camera calibration YAML to send to receivers under "camera_calibration". Default:\n'
+                             '$HELLO_FLEET_PATH/$HELLO_FLEET_ID/calibration_cameras/calibration_rgb_head_camera.yaml')
     parser.add_argument('--oak_buffer_size', type=int, default=1, help='Size of the internal camera queue on both Luxonis devices. Default 1 to minimize latency.')
 
     # Wrist Camera Options
@@ -708,5 +737,6 @@ if __name__ == '__main__':
         head_compress=head_compress,
         wrist_fps=wrist_fps,
         head_fps=head_fps,
-        oak_buffer_size=args.oak_buffer_size
+        oak_buffer_size=args.oak_buffer_size,
+        camera_calibration_path=args.camera_calibration or cu.get_default_camera_calibration_path()
     )

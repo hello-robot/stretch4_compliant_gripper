@@ -128,7 +128,7 @@ To use these calibration files on your offboard desktop, simply run the provided
 python3 sync_calibration_models.py
 ```
 
-This tool automatically connects to the robot using the IP specified in `gripper_networking.py`, downloads the calibration files in a single `scp` command (minimizing password prompts), and extracts the correct `HELLO_FLEET_ID` directly from the downloaded data. It then automatically organizes the models into your desktop's local `~/stretch_user/<robot_id>/calibration_gripper` directory, keeping both machines in sync.
+This tool automatically connects to the robot using the IP specified in `gripper_networking.py`, downloads the calibration files in a single `scp` command (minimizing password prompts), and extracts the correct `HELLO_FLEET_ID` directly from the downloaded data. It then automatically organizes the models into your desktop's local `~/stretch_user/<robot_id>/calibration_gripper` directory, keeping both machines in sync. It also copies the robot's camera calibration (`calibration_rgb_head_camera.yaml`, the intrinsics of the head and gripper cameras) into `~/stretch_user/<robot_id>/calibration_cameras`. `send_gripper_and_head_images_with_joint_states.py` also sends this calibration with every message under `camera_calibration`, so receivers have it without syncing.
 
 ---
 

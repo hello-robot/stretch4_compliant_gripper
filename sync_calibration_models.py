@@ -8,7 +8,7 @@ import yaml
 from stretch4_gripper_modeling_and_control.gripper_networking import robot_ip
 
 def main():
-    parser = argparse.ArgumentParser(description="Sync gripper calibration models from the robot to the local desktop.")
+    parser = argparse.ArgumentParser(description="Sync gripper calibration models and camera calibration from the robot to the local desktop.")
     parser.add_argument('--ip', type=str, default=robot_ip, help="The IP address of the robot")
     parser.add_argument('--user', type=str, default='hello-robot', help="The SSH user for the robot")
     args = parser.parse_args()
@@ -18,22 +18,23 @@ def main():
     print(f"Connecting to {args.user}@{args.ip} to fetch calibration models...")
     
     with tempfile.TemporaryDirectory() as temp_dir:
-        # We use a single scp command with a wildcard to copy both latest_model_planar.yaml and latest_mirror_transforms.yaml
-        # The wildcard is expanded on the remote side, avoiding the need to know the robot_id upfront.
-        remote_pattern = f'/home/{args.user}/stretch_user/*/calibration_gripper/latest_*.yaml'
-        
-        command = [
-            'scp', 
-            f'{args.user}@{args.ip}:{remote_pattern}', 
-            temp_dir
+        # We use a single scp command with wildcards to copy latest_model_planar.yaml,
+        # latest_mirror_transforms.yaml, and the camera calibration (calibration_rgb_head_camera.yaml).
+        # The wildcards are expanded on the remote side, avoiding the need to know the robot_id upfront.
+        remote_patterns = [
+            f'/home/{args.user}/stretch_user/*/calibration_gripper/latest_*.yaml',
+            f'/home/{args.user}/stretch_user/*/calibration_cameras/calibration_rgb_head_camera.yaml',
         ]
+        
+        command = ['scp'] + [f'{args.user}@{args.ip}:{pattern}' for pattern in remote_patterns] + [temp_dir]
         
         try:
             subprocess.run(command, check=True)
             print("Successfully downloaded calibration files to a temporary directory.")
         except subprocess.CalledProcessError as e:
-            print(f"Error syncing calibration files: {e}")
-            return
+            # scp also fails when one of the patterns matches nothing, but still
+            # copies the files that do exist, so carry on with what arrived.
+            print(f"Warning: scp reported an error ({e}). Continuing with the files that were downloaded.")
             
         model_planar_path = os.path.join(temp_dir, 'latest_model_planar.yaml')
         if not os.path.exists(model_planar_path):
@@ -67,6 +68,15 @@ def main():
         else:
             print(f"Successfully synced latest_model_planar.yaml to {local_dir}")
             print(f"Note: latest_mirror_transforms.yaml was not found.")
+
+        camera_calibration_path = os.path.join(temp_dir, 'calibration_rgb_head_camera.yaml')
+        if os.path.exists(camera_calibration_path):
+            local_camera_dir = os.path.join(local_fleet_path, robot_id, 'calibration_cameras')
+            os.makedirs(local_camera_dir, exist_ok=True)
+            shutil.move(camera_calibration_path, os.path.join(local_camera_dir, 'calibration_rgb_head_camera.yaml'))
+            print(f"Successfully synced calibration_rgb_head_camera.yaml to {local_camera_dir}")
+        else:
+            print(f"Note: calibration_rgb_head_camera.yaml was not found.")
 
 if __name__ == "__main__":
     main()
